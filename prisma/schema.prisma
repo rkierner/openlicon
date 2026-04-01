@@ -1,0 +1,334 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum EntryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum EntrySource {
+  MANUAL
+  API
+  IMPORT
+  AGENT
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ImportType {
+  USERS
+  PROJECTS
+  TIME_ENTRIES
+}
+
+enum SyncType {
+  WORKDAY_USERS
+  WORKDAY_ORG
+}
+
+enum ApprovalAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  RECALLED
+}
+
+// ─── Org & Users ─────────────────────────────────────────────────────────────
+
+model CostCenter {
+  id         String   @id @default(cuid())
+  name       String
+  code       String   @unique
+  externalId String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users User[]
+
+  @@map("cost_centers")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String?
+  workdayId    String?   @unique
+  employeeId   String?   @unique
+  role         Role      @default(USER)
+  title        String?
+  department   String?
+  isActive     Boolean   @default(true)
+  managerId    String?
+  costCenterId String?
+  weeklyTarget Decimal   @default(40) @db.Decimal(5, 2)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  manager     User?  @relation("reports", fields: [managerId], references: [id])
+  reports     User[] @relation("reports")
+  costCenter  CostCenter? @relation(fields: [costCenterId], references: [id])
+
+  timeEntries         TimeEntry[]
+  timesheets          Timesheet[]
+  approvedTimesheets  Timesheet[]          @relation("ApprovedBy")
+  approvalEvents      ApprovalEvent[]
+  personalAccessTokens PersonalAccessToken[]
+  auditLogs           AuditLog[]
+  savedReports        SavedReport[]
+
+  @@index([managerId])
+  @@index([costCenterId])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ─── Projects & Attribution ───────────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  status      String   @default("ACTIVE") // ACTIVE | ARCHIVED
+  billable    Boolean  @default(true)
+  color       String?  // hex color for UI display
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  initiatives Initiative[]
+  timeEntries TimeEntry[]
+
+  @@index([status])
+  @@map("projects")
+}
+
+model Initiative {
+  id          String   @id @default(cuid())
+  name        String
+  projectId   String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project?    @relation(fields: [projectId], references: [id])
+  timeEntries TimeEntry[]
+
+  @@index([projectId])
+  @@map("initiatives")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  color     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  timeEntries TimeEntry[]
+
+  @@map("categories")
+}
+
+// ─── Time Tracking ───────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id           String      @id @default(cuid())
+  userId       String
+  date         DateTime    @db.Date
+  hours        Decimal     @db.Decimal(5, 2)
+  projectId    String
+  initiativeId String?
+  categoryId   String
+  notes        String?
+  status       EntryStatus @default(DRAFT)
+  source       EntrySource @default(MANUAL)
+  timesheetId  String?
+  externalId   String?     // for import idempotency
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id])
+  project    Project     @relation(fields: [projectId], references: [id])
+  initiative Initiative? @relation(fields: [initiativeId], references: [id])
+  category   Category    @relation(fields: [categoryId], references: [id])
+  timesheet  Timesheet?  @relation(fields: [timesheetId], references: [id])
+
+  @@index([userId, date])
+  @@index([userId, status])
+  @@index([projectId])
+  @@index([timesheetId])
+  @@index([date])
+  @@index([status])
+  @@index([externalId])
+  @@map("time_entries")
+}
+
+model Timesheet {
+  id           String      @id @default(cuid())
+  userId       String
+  weekStart    DateTime    @db.Date // always Monday
+  status       EntryStatus @default(DRAFT)
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  approvedById String?
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user          User            @relation(fields: [userId], references: [id])
+  approvedBy    User?           @relation("ApprovedBy", fields: [approvedById], references: [id])
+  entries       TimeEntry[]
+  approvalEvents ApprovalEvent[]
+
+  @@unique([userId, weekStart])
+  @@index([userId])
+  @@index([weekStart])
+  @@index([status])
+  @@map("timesheets")
+}
+
+model ApprovalEvent {
+  id          String         @id @default(cuid())
+  timesheetId String
+  actorId     String
+  action      ApprovalAction
+  notes       String?
+  createdAt   DateTime       @default(now())
+
+  timesheet Timesheet @relation(fields: [timesheetId], references: [id])
+  actor     User      @relation(fields: [actorId], references: [id])
+
+  @@index([timesheetId])
+  @@index([actorId])
+  @@map("approval_events")
+}
+
+// ─── Developer Platform: PATs ─────────────────────────────────────────────────
+
+model PersonalAccessToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  tokenHash   String    @unique // SHA-256 of the raw token
+  tokenPrefix String    // first 8 chars after "tirp_" for display
+  scopes      String[]  // e.g. ["time:read", "time:write"]
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  lastUsedIp  String?
+  createdAt   DateTime  @default(now())
+
+  user      User       @relation(fields: [userId], references: [id])
+  auditLogs AuditLog[]
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("personal_access_tokens")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  patId      String?
+  action     String   // e.g. "TIME_ENTRY.CREATE", "TIMESHEET.SUBMIT", "PAT.REVOKE"
+  entityType String   // e.g. "TimeEntry", "Timesheet", "User"
+  entityId   String
+  changes    Json?    // { before: {...}, after: {...} }
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User?               @relation(fields: [userId], references: [id])
+  pat  PersonalAccessToken? @relation(fields: [patId], references: [id])
+
+  @@index([userId])
+  @@index([patId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+
+model SavedReport {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  config    Json     // { type, filters, groupBy, dateRange, ... }
+  isShared  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("saved_reports")
+}
+
+// ─── Jobs ─────────────────────────────────────────────────────────────────────
+
+model ImportJob {
+  id            String     @id @default(cuid())
+  type          ImportType
+  filename      String
+  status        JobStatus  @default(PENDING)
+  totalRows     Int        @default(0)
+  processedRows Int        @default(0)
+  successRows   Int        @default(0)
+  errorRows     Int        @default(0)
+  errors        Json?      // array of { row, message }
+  mappingConfig Json?      // column mapping used
+  createdById   String?
+  createdAt     DateTime   @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  @@index([status])
+  @@index([type])
+  @@map("import_jobs")
+}
+
+model SyncJob {
+  id          String    @id @default(cuid())
+  type        SyncType
+  status      JobStatus @default(PENDING)
+  triggeredBy String?   // "scheduled" | userId
+  result      Json?     // { created, updated, deactivated, errors }
+  error       String?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([type, status])
+  @@index([createdAt])
+  @@map("sync_jobs")
+}

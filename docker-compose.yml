@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tirp_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tirp
+      POSTGRES_PASSWORD: tirp_password
+      POSTGRES_DB: tirp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tirp -d tirp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tirp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: tirp_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://tirp:tirp_password@db:5432/tirp"
+      REDIS_URL: "redis://redis:6379"
+      AUTH_SECRET: "tirp-dev-secret-change-in-production-xyz"
+      AUTH_URL: "http://localhost:3000"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      NEXT_PUBLIC_APP_NAME: "TIRP"
+      WORKDAY_ADAPTER: "mock"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: tirp_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://tirp:tirp_password@db:5432/tirp"
+      REDIS_URL: "redis://redis:6379"
+      WORKDAY_ADAPTER: "mock"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
