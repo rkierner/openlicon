@@ -1,15 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Loader2, Archive } from "lucide-react";
+import { Plus, Loader2, Archive, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProjectDialog } from "@/components/admin/project-dialog";
 
 type Project = {
   id: string;
   name: string;
   code: string;
+  description: string | null;
   status: string;
   billable: boolean;
   color: string | null;
@@ -19,12 +21,26 @@ type Project = {
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
-  useEffect(() => {
+  function fetchProjects() {
     fetch("/api/admin/projects?status=all")
       .then((r) => r.json())
       .then((j) => { setProjects(j.data ?? []); setLoading(false); });
-  }, []);
+  }
+
+  useEffect(() => { fetchProjects(); }, []);
+
+  function openCreate() {
+    setEditingProject(null);
+    setDialogOpen(true);
+  }
+
+  function openEdit(project: Project) {
+    setEditingProject(project);
+    setDialogOpen(true);
+  }
 
   return (
     <div className="space-y-4">
@@ -33,7 +49,7 @@ export default function ProjectsPage() {
           <h1 className="text-xl font-semibold">Projects</h1>
           <p className="text-sm text-muted-foreground">{projects.length} projects</p>
         </div>
-        <Button size="sm">
+        <Button size="sm" onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" />
           New Project
         </Button>
@@ -73,12 +89,27 @@ export default function ProjectsPage() {
                       Archived
                     </Badge>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    onClick={() => openEdit(p)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <ProjectDialog
+        open={dialogOpen}
+        project={editingProject}
+        onClose={() => setDialogOpen(false)}
+        onSaved={fetchProjects}
+      />
     </div>
   );
 }
