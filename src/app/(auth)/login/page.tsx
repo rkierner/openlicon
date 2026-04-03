@@ -101,7 +101,10 @@ export default function LoginPage() {
         </Card>
 
         {/* Dev hint */}
-        <p className="mt-4 text-center text-xs text-muted-foreground">
+        <p
+          className="mt-4 text-center text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+          onClick={() => { setEmail("patricia.chen@company.com"); setPassword("password123"); }}
+        >
           Demo: patricia.chen@company.com / password123
         </p>
       </div>

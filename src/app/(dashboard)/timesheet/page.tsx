@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, addDays, startOfWeek, addWeeks, subWeeks } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Send, Loader2, GitCommit, Cpu } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Send, Loader2, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { HourCell } from "@/components/timesheet/hour-cell";
+import { AddRowDialog } from "@/components/timesheet/add-row-dialog";
 import { cn } from "@/lib/utils";
 
 type TimeEntry = {
@@ -29,20 +30,30 @@ type Timesheet = {
 };
 
 type ProjectRow = {
+  key: string; // `${projectId}::${categoryId}::${initiativeId}`
   projectId: string;
   projectCode: string;
   projectName: string;
   projectColor: string | null;
+  categoryId: string;
+  categoryName: string;
+  categoryCode: string;
+  initiativeId: string | null;
+  initiativeName: string | null;
   entries: Record<string, TimeEntry | null>; // date → entry
 };
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "outline",
   SUBMITTED: "info",
   APPROVED: "success",
   REJECTED: "destructive",
 };
+
+function rowKey(projectId: string, categoryId: string, initiativeId: string | null) {
+  return `${projectId}::${categoryId}::${initiativeId ?? ""}`;
+}
 
 export default function TimesheetPage() {
   const [currentWeek, setCurrentWeek] = useState<Date>(() =>
@@ -51,14 +62,16 @@ export default function TimesheetPage() {
   const [timesheet, setTimesheet] = useState<Timesheet | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingRows, setPendingRows] = useState<ProjectRow[]>([]);
 
-  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(currentWeek, i));
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(currentWeek, i));
   const isCurrentWeek =
     format(currentWeek, "yyyy-MM-dd") ===
     format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 
-  const fetchTimesheet = useCallback(async () => {
-    setLoading(true);
+  const fetchTimesheet = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const weekStart = format(currentWeek, "yyyy-MM-dd");
       const res = await fetch(
@@ -71,45 +84,91 @@ export default function TimesheetPage() {
         setTimesheet(isCurrentWeek ? json.data : json.data[0] ?? null);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [currentWeek, isCurrentWeek]);
 
   useEffect(() => {
+    setTimesheet(null);
+    setPendingRows([]);
     fetchTimesheet();
   }, [fetchTimesheet]);
 
-  // Build project rows from entries
-  const projectRows: ProjectRow[] = [];
+  // Build project rows from entries, grouped by (project, category, initiative)
+  const rowsFromEntries = new Map<string, ProjectRow>();
   if (timesheet?.entries) {
-    const byProject = new Map<string, ProjectRow>();
     for (const entry of timesheet.entries) {
-      if (!byProject.has(entry.project.id)) {
-        byProject.set(entry.project.id, {
+      const key = rowKey(entry.project.id, entry.category.id, entry.initiative?.id ?? null);
+      if (!rowsFromEntries.has(key)) {
+        rowsFromEntries.set(key, {
+          key,
           projectId: entry.project.id,
           projectCode: entry.project.code,
           projectName: entry.project.name,
           projectColor: entry.project.color,
+          categoryId: entry.category.id,
+          categoryName: entry.category.name,
+          categoryCode: entry.category.code,
+          initiativeId: entry.initiative?.id ?? null,
+          initiativeName: entry.initiative?.name ?? null,
           entries: {},
         });
       }
-      const dateKey = entry.date.substring(0, 10);
-      byProject.get(entry.project.id)!.entries[dateKey] = entry;
+      rowsFromEntries.get(key)!.entries[entry.date.substring(0, 10)] = entry;
     }
-    projectRows.push(...Array.from(byProject.values()));
   }
+
+  // Merge with pending rows (only add pending rows not already in entries)
+  const allRows: ProjectRow[] = [
+    ...Array.from(rowsFromEntries.values()),
+    ...pendingRows.filter((r) => !rowsFromEntries.has(r.key)),
+  ];
+
+  const existingKeys = new Set(allRows.map((r) => r.key));
 
   // Daily totals
   const dailyTotals = weekDates.map((d) => {
     const dateKey = format(d, "yyyy-MM-dd");
-    return timesheet?.entries
-      .filter((e) => e.date.substring(0, 10) === dateKey)
-      .reduce((s, e) => s + Number(e.hours), 0) ?? 0;
+    return (
+      timesheet?.entries
+        ?.filter((e) => e.date.substring(0, 10) === dateKey)
+        .reduce((s, e) => s + Number(e.hours), 0) ?? 0
+    );
   });
 
   const totalHours = timesheet?.totalHours ?? 0;
   const weeklyTarget = 40;
   const utilizationPct = Math.round((totalHours / weeklyTarget) * 100);
+
+  async function handleHourChange(row: ProjectRow, dateKey: string, hours: number | null) {
+    const entry = row.entries[dateKey];
+
+    if (entry) {
+      if (!hours) {
+        await fetch(`/api/time-entries/${entry.id}`, { method: "DELETE" });
+      } else {
+        await fetch(`/api/time-entries/${entry.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hours }),
+        });
+      }
+    } else if (hours) {
+      await fetch("/api/time-entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: row.projectId,
+          categoryId: row.categoryId,
+          ...(row.initiativeId ? { initiativeId: row.initiativeId } : {}),
+          date: dateKey,
+          hours,
+        }),
+      });
+    }
+
+    await fetchTimesheet(true);
+  }
 
   async function handleSubmit() {
     if (!timesheet?.id) return;
@@ -122,6 +181,31 @@ export default function TimesheetPage() {
     }
   }
 
+  function handleAddRow(
+    project: { id: string; name: string; code: string; color: string | null },
+    category: { id: string; name: string; code: string },
+    initiative: { id: string; name: string } | null
+  ) {
+    const key = rowKey(project.id, category.id, initiative?.id ?? null);
+    if (existingKeys.has(key)) return;
+    setPendingRows((prev) => [
+      ...prev,
+      {
+        key,
+        projectId: project.id,
+        projectCode: project.code,
+        projectName: project.name,
+        projectColor: project.color,
+        categoryId: category.id,
+        categoryName: category.name,
+        categoryCode: category.code,
+        initiativeId: initiative?.id ?? null,
+        initiativeName: initiative?.name ?? null,
+        entries: {},
+      },
+    ]);
+  }
+
   const isEditable = timesheet?.status === "DRAFT" || !timesheet;
   const canSubmit = isEditable && totalHours > 0;
 
@@ -132,7 +216,7 @@ export default function TimesheetPage() {
         <div>
           <h1 className="text-xl font-semibold">My Timesheet</h1>
           <p className="text-sm text-muted-foreground">
-            {format(currentWeek, "MMM d")} – {format(addDays(currentWeek, 4), "MMM d, yyyy")}
+            {format(currentWeek, "MMM d")} – {format(addDays(currentWeek, 6), "MMM d, yyyy")}
           </p>
         </div>
 
@@ -143,7 +227,11 @@ export default function TimesheetPage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             {!isCurrentWeek && (
-              <Button variant="ghost" size="sm" onClick={() => setCurrentWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCurrentWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+              >
                 Today
               </Button>
             )}
@@ -153,7 +241,11 @@ export default function TimesheetPage() {
           </div>
 
           {timesheet && (
-            <Badge variant={STATUS_COLORS[timesheet.status] as "outline" | "info" | "success" | "destructive"}>
+            <Badge
+              variant={
+                STATUS_COLORS[timesheet.status] as "outline" | "info" | "success" | "destructive"
+              }
+            >
               {timesheet.status}
             </Badge>
           )}
@@ -170,7 +262,7 @@ export default function TimesheetPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left px-4 py-2.5 font-medium w-56">Project</th>
+                <th className="text-left px-4 py-2.5 font-medium w-56">Project / Category</th>
                 {weekDates.map((d, i) => (
                   <th key={i} className="text-center px-3 py-2.5 font-medium w-20">
                     <div>{DAYS[i]}</div>
@@ -183,23 +275,32 @@ export default function TimesheetPage() {
               </tr>
             </thead>
             <tbody>
-              {projectRows.length === 0 ? (
+              {allRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-muted-foreground">
-                    <div className="space-y-2">
-                      <p>No time entries this week.</p>
-                      <p className="text-xs">Use the API or click a cell to add entries.</p>
+                  <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                    <div className="space-y-3">
+                      <p>No rows yet.</p>
+                      {isEditable && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDialogOpen(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add your first row
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ) : (
-                projectRows.map((row) => {
+                allRows.map((row) => {
                   const rowTotal = Object.values(row.entries).reduce(
                     (s, e) => s + (e ? Number(e.hours) : 0),
                     0
                   );
                   return (
-                    <tr key={row.projectId} className="border-b last:border-0 hover:bg-muted/30">
+                    <tr key={row.key} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           {row.projectColor && (
@@ -208,16 +309,21 @@ export default function TimesheetPage() {
                               style={{ backgroundColor: row.projectColor }}
                             />
                           )}
-                          <div>
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {row.projectCode}
-                            </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {row.projectCode}
+                              </span>
+                              {Object.values(row.entries).some((e) => e?.source === "AGENT") && (
+                                <Cpu className="h-3 w-3 text-muted-foreground" aria-label="Agent" />
+                              )}
+                            </div>
                             <p className="text-sm truncate max-w-[160px]">{row.projectName}</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-[160px]">
+                              {row.categoryName}
+                              {row.initiativeName && ` · ${row.initiativeName}`}
+                            </p>
                           </div>
-                          {/* Source icons */}
-                          {Object.values(row.entries).some((e) => e?.source === "AGENT") && (
-                            <Cpu className="h-3 w-3 text-muted-foreground" aria-label="Agent" />
-                          )}
                         </div>
                       </td>
                       {weekDates.map((d) => {
@@ -228,7 +334,7 @@ export default function TimesheetPage() {
                             <HourCell
                               value={entry ? Number(entry.hours) : null}
                               disabled={!isEditable}
-                              onChange={() => {}}
+                              onChange={(hours) => handleHourChange(row, dateKey, hours)}
                             />
                           </td>
                         );
@@ -244,7 +350,19 @@ export default function TimesheetPage() {
             {/* Daily totals footer */}
             <tfoot>
               <tr className="border-t bg-muted/50 font-medium">
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">Daily Total</td>
+                <td className="px-4 py-2.5">
+                  {isEditable && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setDialogOpen(true)}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Add row
+                    </Button>
+                  )}
+                </td>
                 {dailyTotals.map((total, i) => (
                   <td key={i} className="text-center px-3 py-2.5 text-sm">
                     {total > 0 ? (
@@ -299,6 +417,13 @@ export default function TimesheetPage() {
           </Button>
         )}
       </div>
+
+      <AddRowDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onAdd={handleAddRow}
+        existingKeys={existingKeys}
+      />
     </div>
   );
 }

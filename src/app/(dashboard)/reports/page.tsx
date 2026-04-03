@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, subMonths } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { BarChart2, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
+import { cn } from "@/lib/utils";
 
 type SummaryGroup = {
   key: string;
@@ -22,27 +23,87 @@ type SummaryResponse = {
   entryCount: number;
 };
 
+const STATUS_OPTIONS: MultiSelectOption[] = [
+  { value: "DRAFT", label: "Draft" },
+  { value: "SUBMITTED", label: "Submitted" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+];
+
+const GROUP_OPTIONS = ["project", "category", "week", "month", "user", "initiative"] as const;
+
 export default function ReportsPage() {
-  const [groupBy, setGroupBy] = useState<"project" | "category" | "week" | "user">("project");
-  const [dateFrom] = useState(() => format(subMonths(new Date(), 3), "yyyy-MM-dd"));
-  const [dateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [groupBy, setGroupBy] = useState<(typeof GROUP_OPTIONS)[number]>("project");
+
+  // Date filters
+  const [dateFrom, setDateFrom] = useState(() => format(subMonths(new Date(), 3), "yyyy-MM-dd"));
+  const [dateTo, setDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+
+  // Multi-select filter values
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+
+  // Filter options fetched from API
+  const [projectOptions, setProjectOptions] = useState<MultiSelectOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<MultiSelectOption[]>([]);
+
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Fetch filter options once on mount
   useEffect(() => {
-    async function fetch_() {
-      setLoading(true);
-      const res = await fetch(
-        `/api/reports/summary?dateFrom=${dateFrom}&dateTo=${dateTo}&groupBy=${groupBy}`
+    fetch("/api/admin/projects")
+      .then((r) => r.json())
+      .then((j) =>
+        setProjectOptions(
+          (j.data ?? []).map((p: { id: string; name: string; code: string; color?: string }) => ({
+            value: p.id,
+            label: `${p.code} — ${p.name}`,
+            color: p.color ?? undefined,
+          }))
+        )
       );
+    fetch("/api/admin/categories")
+      .then((r) => r.json())
+      .then((j) =>
+        setCategoryOptions(
+          (j.data ?? []).map((c: { id: string; name: string; code: string; color?: string }) => ({
+            value: c.id,
+            label: c.name,
+            color: c.color ?? undefined,
+          }))
+        )
+      );
+  }, []);
+
+  // Fetch report data whenever filters change
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const params = new URLSearchParams({ dateFrom, dateTo, groupBy });
+      if (selectedProjects.length) params.set("projectId", selectedProjects.join(","));
+      if (selectedCategories.length) params.set("categoryId", selectedCategories.join(","));
+      if (selectedStatuses.length) params.set("status", selectedStatuses.join(","));
+
+      const res = await fetch(`/api/reports/summary?${params}`);
       if (res.ok) {
         const json = await res.json();
         setData(json.data);
       }
       setLoading(false);
     }
-    fetch_();
-  }, [groupBy, dateFrom, dateTo]);
+    load();
+  }, [groupBy, dateFrom, dateTo, selectedProjects, selectedCategories, selectedStatuses]);
+
+  const hasFilters =
+    selectedProjects.length > 0 || selectedCategories.length > 0 || selectedStatuses.length > 0;
+
+  function clearFilters() {
+    setSelectedProjects([]);
+    setSelectedCategories([]);
+    setSelectedStatuses([]);
+  }
 
   function exportCsv() {
     if (!data) return;
@@ -63,6 +124,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Reports</h1>
@@ -77,8 +139,55 @@ export default function ReportsPage() {
       </div>
 
       {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Date range */}
+        <input
+          type="date"
+          value={dateFrom}
+          max={dateTo}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+        />
+        <span className="text-muted-foreground text-sm">→</span>
+        <input
+          type="date"
+          value={dateTo}
+          min={dateFrom}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+        />
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <MultiSelect
+          options={projectOptions}
+          value={selectedProjects}
+          onChange={setSelectedProjects}
+          placeholder="Projects"
+        />
+        <MultiSelect
+          options={categoryOptions}
+          value={selectedCategories}
+          onChange={setSelectedCategories}
+          placeholder="Categories"
+        />
+        <MultiSelect
+          options={STATUS_OPTIONS}
+          value={selectedStatuses}
+          onChange={setSelectedStatuses}
+          placeholder="Status"
+        />
+
+        {hasFilters && (
+          <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {/* Group by */}
       <div className="flex gap-2 flex-wrap">
-        {(["project", "category", "week", "user"] as const).map((g) => (
+        {GROUP_OPTIONS.map((g) => (
           <Button
             key={g}
             variant={groupBy === g ? "default" : "outline"}
@@ -119,7 +228,10 @@ export default function ReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base capitalize">Hours by {groupBy}</CardTitle>
-          <CardDescription>Last 3 months</CardDescription>
+          <CardDescription>
+            {dateFrom} → {dateTo}
+            {hasFilters && " · filtered"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -127,23 +239,16 @@ export default function ReportsPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : topGroups.length === 0 ? (
-            <div className="flex items-center justify-center h-64 text-muted-foreground">
+            <div className="flex flex-col items-center justify-center h-64 gap-2 text-muted-foreground">
               <BarChart2 className="h-10 w-10 opacity-30" />
+              <p className="text-sm">No data for the selected filters</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={Math.max(200, topGroups.length * 28)}>
               <BarChart data={topGroups} layout="vertical" margin={{ left: 120 }}>
                 <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  width={120}
-                />
-                <Tooltip
-                  formatter={(v) => [`${v}h`, "Hours"]}
-                  contentStyle={{ fontSize: 12 }}
-                />
+                <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={120} />
+                <Tooltip formatter={(v) => [`${v}h`, "Hours"]} contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="hours" radius={[0, 4, 4, 0]}>
                   {topGroups.map((g, i) => (
                     <Cell
@@ -159,7 +264,7 @@ export default function ReportsPage() {
       </Card>
 
       {/* Table */}
-      {data && !loading && (
+      {data && !loading && data.groups.length > 0 && (
         <Card>
           <CardContent className="pt-0">
             <table className="w-full text-sm">

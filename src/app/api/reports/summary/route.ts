@@ -9,10 +9,10 @@ const QuerySchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   groupBy: z.enum(["project", "category", "user", "week", "month", "initiative"]).default("project"),
-  userId: z.string().cuid().optional(),
-  projectId: z.string().cuid().optional(),
-  categoryId: z.string().cuid().optional(),
-  status: z.enum(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]).optional(),
+  userId: z.string().optional(),    // comma-separated CUIDs
+  projectId: z.string().optional(), // comma-separated CUIDs
+  categoryId: z.string().optional(), // comma-separated CUIDs
+  status: z.string().optional(),    // comma-separated statuses
   managerId: z.string().cuid().optional(),
 });
 
@@ -26,23 +26,26 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
   const { dateFrom, dateTo, groupBy, userId, projectId, categoryId, status, managerId } =
     query.data;
 
+  const projectIds = projectId?.split(",").filter(Boolean);
+  const categoryIds = categoryId?.split(",").filter(Boolean);
+  const userIds = userId?.split(",").filter(Boolean);
+  const statuses = status?.split(",").filter(Boolean) as
+    | Array<"DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED">
+    | undefined;
+
   // Scope: non-managers see only their own data
-  const effectiveUserId =
-    ctx.user.role === "ADMIN"
-      ? userId
-      : ctx.user.role === "MANAGER"
-      ? userId
-      : ctx.user.id;
+  const effectiveUserIds =
+    ctx.user.role === "ADMIN" || ctx.user.role === "MANAGER"
+      ? userIds
+      : [ctx.user.id];
 
   const where = {
     date: { gte: new Date(dateFrom), lte: new Date(dateTo) },
-    ...(effectiveUserId ? { userId: effectiveUserId } : {}),
-    ...(projectId ? { projectId } : {}),
-    ...(categoryId ? { categoryId } : {}),
-    ...(status ? { status: status as "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" } : {}),
-    ...(managerId
-      ? { user: { managerId } }
-      : {}),
+    ...(effectiveUserIds?.length ? { userId: { in: effectiveUserIds } } : {}),
+    ...(projectIds?.length ? { projectId: { in: projectIds } } : {}),
+    ...(categoryIds?.length ? { categoryId: { in: categoryIds } } : {}),
+    ...(statuses?.length ? { status: { in: statuses } } : {}),
+    ...(managerId ? { user: { managerId } } : {}),
   };
 
   // Use raw aggregation for performance
