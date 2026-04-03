@@ -76,7 +76,7 @@ SELECT
   p.name        AS project_name,
   p.code        AS project_code,
   p.status      AS project_status,
-  p.billable    AS is_billable,
+  p.capital     AS is_capital,
   p.color       AS project_color,
   p."createdAt" AS project_created_at
 FROM projects p;
@@ -149,7 +149,7 @@ SELECT
   cc.code                                         AS cost_center_code,
   p.name                                          AS project_name,
   p.code                                          AS project_code,
-  p.billable                                      AS is_billable,
+  p.capital                                       AS is_capital,
   ini.name                                        AS initiative_name,
   cat.name                                        AS category_name,
   cat.code                                        AS category_code,
@@ -214,7 +214,7 @@ SELECT
   te."projectId"                                  AS project_key,
   p.code                                          AS project_code,
   p.name                                          AS project_name,
-  p.billable                                      AS is_billable,
+  p.capital                                       AS is_capital,
   te."categoryId"                                 AS category_key,
   cat.name                                        AS category_name,
   te.status,
@@ -235,6 +235,6 @@ GROUP BY
   te."userId", u.name, u.department, u."weeklyTarget",
   mgr.id, mgr.name,
   cc.name,
-  te."projectId", p.code, p.name, p.billable,
+  te."projectId", p.code, p.name, p.capital,
   te."categoryId", cat.name,
   te.status;

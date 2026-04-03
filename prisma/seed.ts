@@ -46,18 +46,18 @@ const COST_CENTERS = [
 ];
 
 const PROJECTS = [
-  { name: "Platform API", code: "PLAT", color: "#6366f1", billable: true },
-  { name: "Data Pipeline", code: "DATA", color: "#8b5cf6", billable: true },
-  { name: "Customer Portal", code: "CUST", color: "#06b6d4", billable: true },
-  { name: "Mobile App", code: "MOB", color: "#10b981", billable: true },
-  { name: "Internal Tools", code: "INT", color: "#f59e0b", billable: false },
-  { name: "Infrastructure", code: "INFRA", color: "#ef4444", billable: true },
-  { name: "Analytics Dashboard", code: "ANLYT", color: "#ec4899", billable: true },
-  { name: "Authentication Service", code: "AUTH", color: "#14b8a6", billable: true },
-  { name: "Notification System", code: "NOTIF", color: "#f97316", billable: true },
-  { name: "Search & Discovery", code: "SRCH", color: "#84cc16", billable: true },
-  { name: "Payment Integration", code: "PAY", color: "#a855f7", billable: true },
-  { name: "DevOps & CI/CD", code: "DEVOPS", color: "#64748b", billable: false },
+  { name: "Platform API", code: "PLAT", color: "#6366f1", capital: false },
+  { name: "Data Pipeline", code: "DATA", color: "#8b5cf6", capital: false },
+  { name: "Customer Portal", code: "CUST", color: "#06b6d4", capital: false },
+  { name: "Mobile App", code: "MOB", color: "#10b981", capital: false },
+  { name: "Internal Tools", code: "INT", color: "#f59e0b", capital: false },
+  { name: "Infrastructure", code: "INFRA", color: "#ef4444", capital: false },
+  { name: "Analytics Dashboard", code: "ANLYT", color: "#ec4899", capital: false },
+  { name: "Authentication Service", code: "AUTH", color: "#14b8a6", capital: false },
+  { name: "Notification System", code: "NOTIF", color: "#f97316", capital: false },
+  { name: "Search & Discovery", code: "SRCH", color: "#84cc16", capital: false },
+  { name: "Payment Integration", code: "PAY", color: "#a855f7", capital: false },
+  { name: "DevOps & CI/CD", code: "DEVOPS", color: "#64748b", capital: false },
 ];
 
 const INITIATIVES_BY_PROJECT: Record<string, string[]> = {

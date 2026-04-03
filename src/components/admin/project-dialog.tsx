@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Loader2, Archive, ArchiveRestore } from "lucide-react";
 
 type Project = {
   id: string;
@@ -19,7 +19,7 @@ type Project = {
   code: string;
   description: string | null;
   status: string;
-  billable: boolean;
+  capital: boolean;
   color: string | null;
 };
 
@@ -42,10 +42,10 @@ export function ProjectDialog({ open, project, onClose, onSaved }: Props) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
-  const [billable, setBillable] = useState(true);
+  const [capital, setCapital] = useState(false);
   const [color, setColor] = useState<string>("");
-  const [status, setStatus] = useState<"ACTIVE" | "ARCHIVED">("ACTIVE");
   const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Populate form when editing
@@ -55,14 +55,13 @@ export function ProjectDialog({ open, project, onClose, onSaved }: Props) {
         setName(project.name);
         setCode(project.code);
         setDescription(project.description ?? "");
-        setBillable(project.billable);
+        setCapital(project.capital);
         setColor(project.color ?? "");
-        setStatus(project.status as "ACTIVE" | "ARCHIVED");
       } else {
         setName("");
         setCode("");
         setDescription("");
-        setBillable(true);
+        setCapital(false);
         setColor("");
         setStatus("ACTIVE");
       }
@@ -79,9 +78,8 @@ export function ProjectDialog({ open, project, onClose, onSaved }: Props) {
         name: name.trim(),
         ...(isEdit ? {} : { code: code.trim().toUpperCase() }),
         description: description.trim() || undefined,
-        billable,
+        capital,
         color: color || undefined,
-        ...(isEdit ? { status } : {}),
       };
 
       const res = isEdit
@@ -106,6 +104,29 @@ export function ProjectDialog({ open, project, onClose, onSaved }: Props) {
       onClose();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleArchiveToggle() {
+    if (!project) return;
+    setArchiving(true);
+    setError(null);
+    try {
+      const newStatus = project.status === "ARCHIVED" ? "ACTIVE" : "ARCHIVED";
+      const res = await fetch(`/api/admin/projects/${project.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setError(json?.error?.message ?? "Something went wrong");
+        return;
+      }
+      onSaved();
+      onClose();
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -191,38 +212,41 @@ export function ProjectDialog({ open, project, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
-              <input
-                type="checkbox"
-                checked={billable}
-                onChange={(e) => setBillable(e.target.checked)}
-                className="rounded"
-              />
-              Billable
-            </label>
-
-            {isEdit && (
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={status === "ARCHIVED"}
-                  onChange={(e) => setStatus(e.target.checked ? "ARCHIVED" : "ACTIVE")}
-                  className="rounded"
-                />
-                Archived
-              </label>
-            )}
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <input
+              type="checkbox"
+              checked={capital}
+              onChange={(e) => setCapital(e.target.checked)}
+              className="rounded"
+            />
+            Capital
+          </label>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+        <DialogFooter className="flex-row items-center">
+          {isEdit && (
+            <Button
+              variant="ghost"
+              className="mr-auto text-muted-foreground hover:text-foreground"
+              onClick={handleArchiveToggle}
+              disabled={saving || archiving}
+            >
+              {archiving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : project?.status === "ARCHIVED" ? (
+                <ArchiveRestore className="h-4 w-4 mr-2" />
+              ) : (
+                <Archive className="h-4 w-4 mr-2" />
+              )}
+              {project?.status === "ARCHIVED" ? "Unarchive" : "Archive"}
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onClose} disabled={saving || archiving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSave || saving}>
+          <Button onClick={handleSave} disabled={!canSave || saving || archiving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             {isEdit ? "Save changes" : "Create project"}
           </Button>

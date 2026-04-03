@@ -15,7 +15,7 @@ export const GET = withAuth(async () => {
     project_name: p.name,
     project_code: p.code,
     project_status: p.status,
-    is_billable: p.billable,
+    is_capital: p.capital,
     project_color: p.color,
     initiative_count: p.initiatives.length,
     project_created_at: p.createdAt.toISOString(),

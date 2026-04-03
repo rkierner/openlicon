@@ -13,7 +13,7 @@ type Project = {
   code: string;
   description: string | null;
   status: string;
-  billable: boolean;
+  capital: boolean;
   color: string | null;
   _count: { timeEntries: number; initiatives: number };
 };
@@ -82,7 +82,7 @@ export default function ProjectsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {p.billable && <Badge variant="outline" className="text-xs">Billable</Badge>}
+                  {p.capital && <Badge variant="outline" className="text-xs">Capital</Badge>}
                   {p.status === "ARCHIVED" && (
                     <Badge variant="secondary" className="text-xs">
                       <Archive className="h-3 w-3 mr-1" />

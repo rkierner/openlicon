@@ -23,7 +23,7 @@ export const DEFAULT_MAPPINGS = {
   projects: {
     code: "Project Code",
     name: "Project Name",
-    billable: "Billable",
+    capital: "Capital",
     status: "Status",
   },
   timeEntries: {
@@ -98,7 +98,7 @@ export async function importProjects(
       const data = {
         code,
         name: row[mapping.name]?.trim() ?? code,
-        billable: row[mapping.billable]?.toLowerCase() !== "false",
+        capital: row[mapping.capital]?.toLowerCase() === "true",
         status: row[mapping.status]?.toLowerCase() === "inactive" ? "ARCHIVED" : "ACTIVE",
       };
 

@@ -9,7 +9,7 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(200),
   code: z.string().min(1).max(20).toUpperCase(),
   description: z.string().optional(),
-  billable: z.boolean().default(true),
+  capital: z.boolean().default(false),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 });
 

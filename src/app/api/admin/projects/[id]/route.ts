@@ -9,7 +9,7 @@ const UpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().optional(),
   status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
-  billable: z.boolean().optional(),
+  capital: z.boolean().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 });
 

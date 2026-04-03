@@ -116,7 +116,7 @@ model Project {
   code        String   @unique
   description String?
   status      String   @default("ACTIVE") // ACTIVE | ARCHIVED
-  billable    Boolean  @default(true)
+  capital     Boolean  @default(false)
   color       String?  // hex color for UI display
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
