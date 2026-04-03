@@ -1,0 +1,66 @@
+import { NextRequest } from "next/server";
+import { withAuth, requireManager } from "@/lib/api-handler";
+import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { ok, Errors } from "@/lib/api-response";
+import { SCOPES } from "@/lib/scopes";
+import { z } from "zod";
+
+const Schema = z.object({ notes: z.string().max(500).optional() });
+
+// POST /api/timesheets/:id/return — manager/admin returns an approved timesheet to DRAFT
+export const POST = withAuth(async (req: NextRequest, ctx, params) => {
+  const guard = requireManager(ctx);
+  if (guard) return guard;
+
+  const id = params?.id;
+  if (!id) return Errors.badRequest("Missing timesheet ID");
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = Schema.safeParse(body);
+
+  const timesheet = await prisma.timesheet.findUnique({ where: { id } });
+  if (!timesheet) return Errors.notFound("Timesheet not found");
+  if (timesheet.status !== "APPROVED") {
+    return Errors.conflict(`Only approved timesheets can be returned (current: ${timesheet.status})`);
+  }
+
+  const now = new Date();
+
+  const [updated] = await prisma.$transaction([
+    prisma.timesheet.update({
+      where: { id },
+      data: {
+        status: "DRAFT",
+        approvedAt: null,
+        approvedById: null,
+        submittedAt: null,
+        returnedAt: now,
+        returnedById: ctx.user.id,
+      },
+    }),
+    prisma.timeEntry.updateMany({
+      where: { timesheetId: id, status: "APPROVED" },
+      data: { status: "DRAFT" },
+    }),
+    prisma.approvalEvent.create({
+      data: {
+        timesheetId: id,
+        actorId: ctx.user.id,
+        action: "RETURNED",
+        notes: parsed.success ? parsed.data.notes : undefined,
+        createdAt: now,
+      },
+    }),
+  ]);
+
+  audit({
+    userId: ctx.user.id,
+    patId: ctx.patId,
+    action: "TIMESHEET.RETURN",
+    entityType: "Timesheet",
+    entityId: id,
+  });
+
+  return ok(updated);
+}, SCOPES.TIMESHEET_APPROVE);

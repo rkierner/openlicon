@@ -8,6 +8,7 @@ export type AuditAction =
   | "TIMESHEET.APPROVE"
   | "TIMESHEET.REJECT"
   | "TIMESHEET.RECALL"
+  | "TIMESHEET.RETURN"
   | "PAT.CREATE"
   | "PAT.REVOKE"
   | "PAT.ROTATE"

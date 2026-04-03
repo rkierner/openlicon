@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, addDays, startOfWeek, addWeeks, subWeeks } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Send, Loader2, Cpu } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Send, Undo2, Loader2, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { HourCell } from "@/components/timesheet/hour-cell";
@@ -62,6 +62,7 @@ export default function TimesheetPage() {
   const [timesheet, setTimesheet] = useState<Timesheet | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [recalling, setRecalling] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingRows, setPendingRows] = useState<ProjectRow[]>([]);
 
@@ -178,6 +179,17 @@ export default function TimesheetPage() {
       if (res.ok) await fetchTimesheet();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleRecall() {
+    if (!timesheet?.id) return;
+    setRecalling(true);
+    try {
+      const res = await fetch(`/api/timesheets/${timesheet.id}/recall`, { method: "POST" });
+      if (res.ok) await fetchTimesheet();
+    } finally {
+      setRecalling(false);
     }
   }
 
@@ -406,16 +418,28 @@ export default function TimesheetPage() {
           )}
         </div>
 
-        {isEditable && (
-          <Button onClick={handleSubmit} disabled={!canSubmit || submitting} size="sm">
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            Submit Week
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {timesheet?.status === "SUBMITTED" && (
+            <Button variant="outline" size="sm" onClick={handleRecall} disabled={recalling}>
+              {recalling ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Undo2 className="h-4 w-4 mr-2" />
+              )}
+              Unsubmit
+            </Button>
+          )}
+          {isEditable && (
+            <Button onClick={handleSubmit} disabled={!canSubmit || submitting} size="sm">
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Submit Week
+            </Button>
+          )}
+        </div>
       </div>
 
       <AddRowDialog
