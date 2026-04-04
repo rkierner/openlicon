@@ -9,30 +9,46 @@ import {
   TimeEntryListQuerySchema,
 } from "@/lib/validations/time-entry";
 
+const TASK_INCLUDE = {
+  task: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      capitalizable: true,
+      project: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          color: true,
+          capital: true,
+          program: { select: { id: true, name: true, code: true } },
+        },
+      },
+    },
+  },
+} as const;
+
 // GET /api/time-entries
 export const GET = withAuth(async (req: NextRequest, ctx) => {
-  const { searchParams } = req.nextUrl;
   const query = TimeEntryListQuerySchema.safeParse(
-    Object.fromEntries(searchParams.entries())
+    Object.fromEntries(req.nextUrl.searchParams.entries())
   );
-
   if (!query.success) {
     return Errors.badRequest("Invalid query parameters", query.error.flatten());
   }
 
-  const { userId, projectId, categoryId, dateFrom, dateTo, status, timesheetId, page, pageSize } =
+  const { userId, taskId, projectId, dateFrom, dateTo, status, timesheetId, page, pageSize } =
     query.data;
 
-  // Non-admins/managers can only see their own entries
   const effectiveUserId =
-    ctx.user.role === "ADMIN" || ctx.user.role === "MANAGER"
-      ? userId
-      : ctx.user.id;
+    ctx.user.role === "ADMIN" || ctx.user.role === "MANAGER" ? userId : ctx.user.id;
 
   const where = {
     ...(effectiveUserId ? { userId: effectiveUserId } : {}),
-    ...(projectId ? { projectId } : {}),
-    ...(categoryId ? { categoryId } : {}),
+    ...(taskId ? { taskId } : {}),
+    ...(projectId ? { task: { projectId } } : {}),
     ...(status ? { status: status as "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" } : {}),
     ...(timesheetId ? { timesheetId } : {}),
     ...(dateFrom || dateTo
@@ -49,47 +65,34 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
     prisma.timeEntry.count({ where }),
     prisma.timeEntry.findMany({
       where,
-      include: {
-        project: { select: { id: true, name: true, code: true, color: true } },
-        initiative: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true, code: true, color: true } },
-        user: { select: { id: true, name: true, email: true } },
-      },
+      include: { ...TASK_INCLUDE, user: { select: { id: true, name: true, email: true } } },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
   ]);
 
-  return ok(entries, {
-    page,
-    pageSize,
-    total,
-    totalPages: Math.ceil(total / pageSize),
-  });
+  return ok(entries, { page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
 }, SCOPES.TIME_READ);
 
 // POST /api/time-entries
 export const POST = withAuth(async (req: NextRequest, ctx) => {
   const body = await req.json().catch(() => null);
   const parsed = TimeEntryCreateSchema.safeParse(body);
-
   if (!parsed.success) {
     return Errors.badRequest("Invalid request body", parsed.error.flatten());
   }
 
-  const { date, hours, projectId, initiativeId, categoryId, notes, source } = parsed.data;
+  const { date, hours, taskId, notes, source } = parsed.data;
 
-  // Verify project exists
-  const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) return Errors.notFound("Project not found");
-  if (project.status !== "ACTIVE") return Errors.badRequest("Project is archived");
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: { project: true },
+  });
+  if (!task) return Errors.notFound("Task not found");
+  if (!task.isActive) return Errors.badRequest("Task is inactive");
+  if (task.project.status !== "ACTIVE") return Errors.badRequest("Project is archived");
 
-  // Verify category exists
-  const category = await prisma.category.findUnique({ where: { id: categoryId } });
-  if (!category) return Errors.notFound("Category not found");
-
-  // Find or create timesheet for this week
   const entryDate = new Date(date);
   const weekStart = getWeekMonday(entryDate);
 
@@ -99,7 +102,6 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
     update: {},
   });
 
-  // Cannot add entries to a submitted/approved timesheet
   if (timesheet.status === "SUBMITTED" || timesheet.status === "APPROVED") {
     return Errors.conflict(
       "Cannot add entries to a submitted or approved timesheet. Recall the timesheet first."
@@ -111,19 +113,13 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
       userId: ctx.user.id,
       date: entryDate,
       hours,
-      projectId,
-      initiativeId: initiativeId ?? null,
-      categoryId,
+      taskId,
       notes: notes ?? null,
       status: "DRAFT",
       source: source ?? "MANUAL",
       timesheetId: timesheet.id,
     },
-    include: {
-      project: { select: { id: true, name: true, code: true, color: true } },
-      initiative: { select: { id: true, name: true } },
-      category: { select: { id: true, name: true, code: true, color: true } },
-    },
+    include: TASK_INCLUDE,
   });
 
   audit({
@@ -132,18 +128,16 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
     action: "TIME_ENTRY.CREATE",
     entityType: "TimeEntry",
     entityId: entry.id,
-    changes: { after: { hours, date, projectId, categoryId } },
+    changes: { after: { hours, date, taskId } },
   });
 
   return created(entry);
 }, SCOPES.TIME_WRITE);
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
 function getWeekMonday(date: Date): Date {
   const d = new Date(date);
   const day = d.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day; // Mon = 1
+  const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);
   d.setUTCHours(0, 0, 0, 0);
   return d;

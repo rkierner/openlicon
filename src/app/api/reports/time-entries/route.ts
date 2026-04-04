@@ -12,15 +12,15 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
   );
   if (!query.success) return Errors.badRequest("Invalid query", query.error.flatten());
 
-  const { userId, projectId, categoryId, dateFrom, dateTo, status, timesheetId, page, pageSize } =
+  const { userId, taskId, projectId, dateFrom, dateTo, status, timesheetId, page, pageSize } =
     query.data;
 
   const effectiveUserId = ctx.user.role === "USER" ? ctx.user.id : userId;
 
   const where = {
     ...(effectiveUserId ? { userId: effectiveUserId } : {}),
-    ...(projectId ? { projectId } : {}),
-    ...(categoryId ? { categoryId } : {}),
+    ...(taskId ? { taskId } : {}),
+    ...(projectId ? { task: { projectId } } : {}),
     ...(status ? { status: status as "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" } : {}),
     ...(timesheetId ? { timesheetId } : {}),
     ...(dateFrom || dateTo
@@ -40,17 +40,22 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
       include: {
         user: {
           select: {
-            id: true,
-            name: true,
-            email: true,
-            title: true,
+            id: true, name: true, email: true, title: true,
             manager: { select: { id: true, name: true } },
             costCenter: { select: { id: true, name: true, code: true } },
           },
         },
-        project: { select: { id: true, name: true, code: true, color: true } },
-        initiative: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true, code: true, color: true } },
+        task: {
+          select: {
+            id: true, name: true, code: true, capitalizable: true,
+            project: {
+              select: {
+                id: true, name: true, code: true, color: true, capital: true,
+                program: { select: { id: true, name: true, code: true } },
+              },
+            },
+          },
+        },
         timesheet: { select: { id: true, weekStart: true, status: true } },
       },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],

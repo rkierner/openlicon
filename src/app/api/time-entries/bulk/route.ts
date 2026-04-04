@@ -12,19 +12,16 @@ import { TimeEntryBulkSchema } from "@/lib/validations/time-entry";
  * idempotency (safe for agent/automation re-runs).
  *
  * If externalId is provided: upsert by (userId, externalId).
- * If not: upsert by (userId, date, projectId, categoryId).
+ * If not: upsert by (userId, date, taskId).
  */
 export const POST = withAuth(async (req: NextRequest, ctx) => {
   const body = await req.json().catch(() => null);
   const parsed = TimeEntryBulkSchema.safeParse(body);
-
   if (!parsed.success) {
     return Errors.badRequest("Invalid request body", parsed.error.flatten());
   }
 
   const { entries } = parsed.data;
-
-  // Admins can specify userId per entry; others can only log for themselves
   const isAdmin = ctx.user.role === "ADMIN";
 
   const results = {
@@ -33,15 +30,12 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
     errors: [] as { index: number; message: string }[],
   };
 
-  // Process in batches of 50
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
-
     try {
       const effectiveUserId = isAdmin && entry.userId ? entry.userId : ctx.user.id;
       const entryDate = new Date(entry.date);
 
-      // Find or create timesheet
       const weekStart = getWeekMonday(entryDate);
       const timesheet = await prisma.timesheet.upsert({
         where: { userId_weekStart: { userId: effectiveUserId, weekStart } },
@@ -58,9 +52,7 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
         userId: effectiveUserId,
         date: entryDate,
         hours: entry.hours,
-        projectId: entry.projectId,
-        initiativeId: entry.initiativeId ?? null,
-        categoryId: entry.categoryId,
+        taskId: entry.taskId,
         notes: entry.notes ?? null,
         source: entry.source ?? "API",
         status: "DRAFT" as const,
@@ -80,15 +72,8 @@ export const POST = withAuth(async (req: NextRequest, ctx) => {
           results.created++;
         }
       } else {
-        // Upsert by natural key
         const existing = await prisma.timeEntry.findFirst({
-          where: {
-            userId: effectiveUserId,
-            date: entryDate,
-            projectId: entry.projectId,
-            categoryId: entry.categoryId,
-            status: { in: ["DRAFT"] },
-          },
+          where: { userId: effectiveUserId, date: entryDate, taskId: entry.taskId, status: "DRAFT" },
         });
         if (existing) {
           await prisma.timeEntry.update({ where: { id: existing.id }, data });

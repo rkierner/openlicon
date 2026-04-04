@@ -9,7 +9,7 @@ const QuerySchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   granularity: z.enum(["day", "week", "month"]).default("week"),
-  groupBy: z.enum(["project", "category", "user", "none"]).default("none"),
+  groupBy: z.enum(["project", "task", "program", "user", "none"]).default("none"),
   userId: z.string().cuid().optional(),
   projectId: z.string().cuid().optional(),
   status: z.enum(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]).optional(),
@@ -24,25 +24,32 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
 
   const { dateFrom, dateTo, granularity, groupBy, userId, projectId, status } = query.data;
 
-  const effectiveUserId =
-    ctx.user.role !== "USER" ? userId : ctx.user.id;
+  const effectiveUserId = ctx.user.role !== "USER" ? userId : ctx.user.id;
 
   const entries = await prisma.timeEntry.findMany({
     where: {
       date: { gte: new Date(dateFrom), lte: new Date(dateTo) },
       ...(effectiveUserId ? { userId: effectiveUserId } : {}),
-      ...(projectId ? { projectId } : {}),
-      ...(status ? { status: status as "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" } : {}),
+      ...(projectId ? { task: { projectId } } : {}),
+      ...(status ? { status } : {}),
     },
     include: {
-      project: { select: { id: true, name: true, code: true, color: true } },
-      category: { select: { id: true, name: true, code: true, color: true } },
+      task: {
+        select: {
+          id: true, name: true,
+          project: {
+            select: {
+              id: true, name: true, code: true, color: true,
+              program: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
       user: { select: { id: true, name: true } },
     },
     orderBy: { date: "asc" },
   });
 
-  // Build time buckets
   const bucketKey = (date: Date): string => {
     if (granularity === "day") return date.toISOString().substring(0, 10);
     if (granularity === "week") return getWeekMonday(date).toISOString().substring(0, 10);
@@ -50,7 +57,6 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
   };
 
-  // series[bucketKey][seriesKey] = hours
   const series: Record<string, Record<string, number>> = {};
   const seriesLabels: Record<string, string> = {};
   const seriesColors: Record<string, string> = {};
@@ -63,14 +69,17 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
 
     switch (groupBy) {
       case "project":
-        seriesKey = entry.projectId;
-        seriesLabel = entry.project.code;
-        color = entry.project.color ?? undefined;
+        seriesKey = entry.task.project.id;
+        seriesLabel = entry.task.project.code;
+        color = entry.task.project.color ?? undefined;
         break;
-      case "category":
-        seriesKey = entry.categoryId;
-        seriesLabel = entry.category.name;
-        color = entry.category.color ?? undefined;
+      case "task":
+        seriesKey = entry.taskId;
+        seriesLabel = entry.task.name;
+        break;
+      case "program":
+        seriesKey = entry.task.project.program?.id ?? "__none__";
+        seriesLabel = entry.task.project.program?.name ?? "(No Program)";
         break;
       case "user":
         seriesKey = entry.userId;
@@ -87,7 +96,6 @@ export const GET = withAuth(async (req: NextRequest, ctx) => {
     if (color) seriesColors[seriesKey] = color;
   }
 
-  // Flatten to array sorted by date
   const data = Object.entries(series)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, values]) => ({ date, ...values }));

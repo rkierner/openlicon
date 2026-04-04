@@ -3,22 +3,20 @@ import { z } from "zod";
 export const TimeEntryCreateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
   hours: z.number().min(0.25).max(24),
-  projectId: z.string().cuid(),
-  initiativeId: z.string().cuid().optional().nullable(),
-  categoryId: z.string().cuid(),
+  taskId: z.string().cuid(),
   notes: z.string().max(1000).optional().nullable(),
-  // source defaults to MANUAL; agents can pass API/AGENT
   source: z.enum(["MANUAL", "API", "IMPORT", "AGENT"]).optional(),
 });
 
-export const TimeEntryUpdateSchema = TimeEntryCreateSchema.partial();
+export const TimeEntryUpdateSchema = z.object({
+  hours: z.number().min(0.25).max(24).optional(),
+  notes: z.string().max(1000).optional().nullable(),
+});
 
 export const TimeEntryBulkSchema = z.object({
   entries: z.array(
     TimeEntryCreateSchema.extend({
-      // For idempotency — if provided, upsert by externalId
       externalId: z.string().optional(),
-      // Allow overriding userId for admin imports
       userId: z.string().cuid().optional(),
     })
   ).min(1).max(500),
@@ -26,8 +24,8 @@ export const TimeEntryBulkSchema = z.object({
 
 export const TimeEntryListQuerySchema = z.object({
   userId: z.string().cuid().optional(),
+  taskId: z.string().cuid().optional(),
   projectId: z.string().cuid().optional(),
-  categoryId: z.string().cuid().optional(),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z.enum(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]).optional(),

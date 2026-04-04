@@ -68,18 +68,53 @@ LEFT JOIN users l2   ON l2.id   = mgr."managerId"
 LEFT JOIN users l3   ON l3.id   = l2."managerId"
 LEFT JOIN cost_centers cc ON cc.id = u."costCenterId";
 
+-- ─── Dimension: Program ──────────────────────────────────────────────────────
+
+CREATE OR REPLACE VIEW vw_dim_program AS
+SELECT
+  pg.id           AS program_key,
+  pg.name         AS program_name,
+  pg.code         AS program_code,
+  pg."isActive"   AS is_active,
+  pg."createdAt"  AS program_created_at
+FROM programs pg;
+
 -- ─── Dimension: Project ───────────────────────────────────────────────────────
 
 CREATE OR REPLACE VIEW vw_dim_project AS
 SELECT
-  p.id          AS project_key,
-  p.name        AS project_name,
-  p.code        AS project_code,
-  p.status      AS project_status,
-  p.capital     AS is_capital,
-  p.color       AS project_color,
-  p."createdAt" AS project_created_at
-FROM projects p;
+  p.id            AS project_key,
+  p.name          AS project_name,
+  p.code          AS project_code,
+  p.status        AS project_status,
+  p.capital       AS is_capital,
+  p.color         AS project_color,
+  p."programId"   AS program_key,
+  pg.name         AS program_name,
+  pg.code         AS program_code,
+  p."createdAt"   AS project_created_at
+FROM projects p
+LEFT JOIN programs pg ON pg.id = p."programId";
+
+-- ─── Dimension: Task ─────────────────────────────────────────────────────────
+
+CREATE OR REPLACE VIEW vw_dim_task AS
+SELECT
+  t.id              AS task_key,
+  t.name            AS task_name,
+  t.code            AS task_code,
+  t.capitalizable   AS is_capitalizable,
+  t."isActive"      AS is_active,
+  t."projectId"     AS project_key,
+  p.name            AS project_name,
+  p.code            AS project_code,
+  p.capital         AS project_is_capital,
+  p."programId"     AS program_key,
+  pg.name           AS program_name,
+  t."createdAt"     AS task_created_at
+FROM tasks t
+JOIN projects p  ON p.id = t."projectId"
+LEFT JOIN programs pg ON pg.id = p."programId";
 
 -- ─── Dimension: Organisation (Org Tree) ──────────────────────────────────────
 
@@ -124,7 +159,6 @@ SELECT
 FROM org_tree;
 
 -- ─── Fact Table: Time Entries ─────────────────────────────────────────────────
--- Central fact table. Optimized for star schema joins.
 
 CREATE OR REPLACE VIEW vw_fact_time_entries AS
 SELECT
@@ -132,14 +166,14 @@ SELECT
   TO_CHAR(te.date, 'YYYYMMDD')::integer           AS date_key,
   te.date                                         AS entry_date,
   te."userId"                                     AS user_key,
-  te."projectId"                                  AS project_key,
-  te."initiativeId"                               AS initiative_key,
-  te."categoryId"                                 AS category_key,
+  te."taskId"                                     AS task_key,
+  t."projectId"                                   AS project_key,
+  p."programId"                                   AS program_key,
   te."timesheetId"                                AS timesheet_key,
   te.hours::float                                 AS hours,
   te.status                                       AS entry_status,
   te.source                                       AS entry_source,
-  -- Denormalized for convenience (reduces join depth in Power BI)
+  -- Denormalized
   u.name                                          AS user_name,
   u.email                                         AS user_email,
   u.department                                    AS user_department,
@@ -147,54 +181,55 @@ SELECT
   mgr.name                                        AS manager_name,
   cc.name                                         AS cost_center_name,
   cc.code                                         AS cost_center_code,
+  t.name                                          AS task_name,
+  t.code                                          AS task_code,
+  t.capitalizable                                 AS is_capitalizable,
   p.name                                          AS project_name,
   p.code                                          AS project_code,
   p.capital                                       AS is_capital,
-  ini.name                                        AS initiative_name,
-  cat.name                                        AS category_name,
-  cat.code                                        AS category_code,
+  pg.name                                         AS program_name,
+  pg.code                                         AS program_code,
   ts."weekStart"                                  AS timesheet_week_start,
   ts.status                                       AS timesheet_status,
   te."createdAt"                                  AS created_at,
   te."updatedAt"                                  AS updated_at
 FROM time_entries te
-JOIN users u         ON u.id = te."userId"
-JOIN projects p      ON p.id = te."projectId"
-JOIN categories cat  ON cat.id = te."categoryId"
-LEFT JOIN users mgr          ON mgr.id = u."managerId"
-LEFT JOIN cost_centers cc    ON cc.id = u."costCenterId"
-LEFT JOIN initiatives ini    ON ini.id = te."initiativeId"
-LEFT JOIN timesheets ts      ON ts.id = te."timesheetId";
+JOIN users u             ON u.id = te."userId"
+JOIN tasks t             ON t.id = te."taskId"
+JOIN projects p          ON p.id = t."projectId"
+LEFT JOIN programs pg    ON pg.id = p."programId"
+LEFT JOIN users mgr      ON mgr.id = u."managerId"
+LEFT JOIN cost_centers cc ON cc.id = u."costCenterId"
+LEFT JOIN timesheets ts  ON ts.id = te."timesheetId";
 
 -- ─── Summary: Weekly ─────────────────────────────────────────────────────────
 
 CREATE OR REPLACE VIEW vw_time_summary_weekly AS
 SELECT
-  DATE_TRUNC('week', te.date)::date               AS week_start,
+  DATE_TRUNC('week', te.date)::date                  AS week_start,
   TO_CHAR(DATE_TRUNC('week', te.date), 'YYYY-"W"IW') AS iso_week_label,
-  te."userId"                                     AS user_key,
-  u.name                                          AS user_name,
+  te."userId"                                        AS user_key,
+  u.name                                             AS user_name,
   u.department,
-  mgr.name                                        AS manager_name,
-  te."projectId"                                  AS project_key,
-  p.code                                          AS project_code,
-  p.name                                          AS project_name,
-  te."categoryId"                                 AS category_key,
-  cat.name                                        AS category_name,
+  mgr.name                                           AS manager_name,
+  t."projectId"                                      AS project_key,
+  p.code                                             AS project_code,
+  p.name                                             AS project_name,
+  te."taskId"                                        AS task_key,
+  t.name                                             AS task_name,
   te.status,
-  SUM(te.hours)::float                            AS total_hours,
-  COUNT(*)                                        AS entry_count
+  SUM(te.hours)::float                               AS total_hours,
+  COUNT(*)                                           AS entry_count
 FROM time_entries te
-JOIN users u         ON u.id = te."userId"
-JOIN projects p      ON p.id = te."projectId"
-JOIN categories cat  ON cat.id = te."categoryId"
-LEFT JOIN users mgr  ON mgr.id = u."managerId"
+JOIN users u     ON u.id = te."userId"
+JOIN tasks t     ON t.id = te."taskId"
+JOIN projects p  ON p.id = t."projectId"
+LEFT JOIN users mgr ON mgr.id = u."managerId"
 GROUP BY
   DATE_TRUNC('week', te.date),
-  te."userId", u.name, u.department,
-  mgr.name,
-  te."projectId", p.code, p.name,
-  te."categoryId", cat.name,
+  te."userId", u.name, u.department, mgr.name,
+  t."projectId", p.code, p.name,
+  te."taskId", t.name,
   te.status;
 
 -- ─── Summary: Monthly ────────────────────────────────────────────────────────
@@ -211,21 +246,22 @@ SELECT
   mgr.id                                          AS manager_key,
   mgr.name                                        AS manager_name,
   cc.name                                         AS cost_center_name,
-  te."projectId"                                  AS project_key,
+  t."projectId"                                   AS project_key,
   p.code                                          AS project_code,
   p.name                                          AS project_name,
   p.capital                                       AS is_capital,
-  te."categoryId"                                 AS category_key,
-  cat.name                                        AS category_name,
+  p."programId"                                   AS program_key,
+  te."taskId"                                     AS task_key,
+  t.name                                          AS task_name,
   te.status,
   SUM(te.hours)::float                            AS total_hours,
   COUNT(*)                                        AS entry_count,
   u."weeklyTarget"::float * 4.33                  AS monthly_target_hours
 FROM time_entries te
-JOIN users u         ON u.id = te."userId"
-JOIN projects p      ON p.id = te."projectId"
-JOIN categories cat  ON cat.id = te."categoryId"
-LEFT JOIN users mgr  ON mgr.id = u."managerId"
+JOIN users u      ON u.id = te."userId"
+JOIN tasks t      ON t.id = te."taskId"
+JOIN projects p   ON p.id = t."projectId"
+LEFT JOIN users mgr       ON mgr.id = u."managerId"
 LEFT JOIN cost_centers cc ON cc.id = u."costCenterId"
 GROUP BY
   DATE_TRUNC('month', te.date),
@@ -235,6 +271,6 @@ GROUP BY
   te."userId", u.name, u.department, u."weeklyTarget",
   mgr.id, mgr.name,
   cc.name,
-  te."projectId", p.code, p.name, p.capital,
-  te."categoryId", cat.name,
+  t."projectId", p.code, p.name, p.capital, p."programId",
+  te."taskId", t.name,
   te.status;

@@ -11,14 +11,22 @@ const CreateSchema = z.object({
   description: z.string().optional(),
   capital: z.boolean().default(false),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  programId: z.string().cuid().optional().nullable(),
 });
 
 export const GET = withAuth(async (req: NextRequest, ctx) => {
   const status = req.nextUrl.searchParams.get("status") ?? "ACTIVE";
+  const programId = req.nextUrl.searchParams.get("programId") ?? undefined;
   const projects = await prisma.project.findMany({
-    where: status === "all" ? {} : { status },
-    include: { _count: { select: { timeEntries: true, initiatives: true } } },
-    orderBy: { name: "asc" },
+    where: {
+      ...(status === "all" ? {} : { status }),
+      ...(programId ? { programId } : {}),
+    },
+    include: {
+      program: { select: { id: true, name: true, code: true } },
+      _count: { select: { tasks: true } },
+    },
+    orderBy: [{ program: { name: "asc" } }, { name: "asc" }],
   });
   return ok(projects);
 }, SCOPES.ADMIN_READ);

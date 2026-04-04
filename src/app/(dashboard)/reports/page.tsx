@@ -30,7 +30,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
   { value: "REJECTED", label: "Rejected" },
 ];
 
-const GROUP_OPTIONS = ["project", "category", "week", "month", "user", "initiative"] as const;
+const GROUP_OPTIONS = ["project", "task", "program", "week", "month", "user"] as const;
 
 export default function ReportsPage() {
   const [groupBy, setGroupBy] = useState<(typeof GROUP_OPTIONS)[number]>("project");
@@ -41,12 +41,12 @@ export default function ReportsPage() {
 
   // Multi-select filter values
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
 
   // Filter options fetched from API
   const [projectOptions, setProjectOptions] = useState<MultiSelectOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<MultiSelectOption[]>([]);
+  const [programOptions, setProgramOptions] = useState<MultiSelectOption[]>([]);
 
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,14 +64,13 @@ export default function ReportsPage() {
           }))
         )
       );
-    fetch("/api/admin/categories")
+    fetch("/api/admin/programs")
       .then((r) => r.json())
       .then((j) =>
-        setCategoryOptions(
-          (j.data ?? []).map((c: { id: string; name: string; code: string; color?: string }) => ({
-            value: c.id,
-            label: c.name,
-            color: c.color ?? undefined,
+        setProgramOptions(
+          (j.data ?? []).map((p: { id: string; name: string }) => ({
+            value: p.id,
+            label: p.name,
           }))
         )
       );
@@ -83,7 +82,7 @@ export default function ReportsPage() {
       setLoading(true);
       const params = new URLSearchParams({ dateFrom, dateTo, groupBy });
       if (selectedProjects.length) params.set("projectId", selectedProjects.join(","));
-      if (selectedCategories.length) params.set("categoryId", selectedCategories.join(","));
+      if (selectedPrograms.length) params.set("programId", selectedPrograms.join(","));
       if (selectedStatuses.length) params.set("status", selectedStatuses.join(","));
 
       const res = await fetch(`/api/reports/summary?${params}`);
@@ -94,14 +93,14 @@ export default function ReportsPage() {
       setLoading(false);
     }
     load();
-  }, [groupBy, dateFrom, dateTo, selectedProjects, selectedCategories, selectedStatuses]);
+  }, [groupBy, dateFrom, dateTo, selectedProjects, selectedPrograms, selectedStatuses]);
 
   const hasFilters =
-    selectedProjects.length > 0 || selectedCategories.length > 0 || selectedStatuses.length > 0;
+    selectedProjects.length > 0 || selectedPrograms.length > 0 || selectedStatuses.length > 0;
 
   function clearFilters() {
     setSelectedProjects([]);
-    setSelectedCategories([]);
+    setSelectedPrograms([]);
     setSelectedStatuses([]);
   }
 
@@ -166,10 +165,10 @@ export default function ReportsPage() {
           placeholder="Projects"
         />
         <MultiSelect
-          options={categoryOptions}
-          value={selectedCategories}
-          onChange={setSelectedCategories}
-          placeholder="Categories"
+          options={programOptions}
+          value={selectedPrograms}
+          onChange={setSelectedPrograms}
+          placeholder="Programs"
         />
         <MultiSelect
           options={STATUS_OPTIONS}

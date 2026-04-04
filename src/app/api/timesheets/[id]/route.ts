@@ -19,9 +19,17 @@ export const GET = withAuth(async (_req: NextRequest, ctx, params) => {
       approvedBy: { select: { id: true, name: true } },
       entries: {
         include: {
-          project: { select: { id: true, name: true, code: true, color: true } },
-          initiative: { select: { id: true, name: true } },
-          category: { select: { id: true, name: true, code: true, color: true } },
+          task: {
+            select: {
+              id: true, name: true, code: true, capitalizable: true,
+              project: {
+                select: {
+                  id: true, name: true, code: true, color: true, capital: true,
+                  program: { select: { id: true, name: true, code: true } },
+                },
+              },
+            },
+          },
         },
         orderBy: [{ date: "asc" }],
       },

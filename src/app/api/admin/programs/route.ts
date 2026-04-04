@@ -5,29 +5,33 @@ import { ok, created, Errors } from "@/lib/api-response";
 import { SCOPES } from "@/lib/scopes";
 import { z } from "zod";
 
-const Schema = z.object({
+const CreateSchema = z.object({
   name: z.string().min(1).max(200),
-  projectId: z.string().cuid().optional(),
+  code: z.string().min(1).max(20).toUpperCase(),
   description: z.string().optional(),
-  isActive: z.boolean().default(true),
 });
 
-export const GET = withAuth(async (req: NextRequest) => {
-  const projectId = req.nextUrl.searchParams.get("projectId") ?? undefined;
-  const initiatives = await prisma.initiative.findMany({
-    where: { ...(projectId ? { projectId } : {}), isActive: true },
-    include: { project: { select: { id: true, name: true, code: true } } },
+// GET /api/admin/programs
+export const GET = withAuth(async (_req: NextRequest) => {
+  const programs = await prisma.program.findMany({
+    include: { _count: { select: { projects: true } } },
     orderBy: { name: "asc" },
   });
-  return ok(initiatives);
+  return ok(programs);
 }, SCOPES.ADMIN_READ);
 
+// POST /api/admin/programs
 export const POST = withAuth(async (req: NextRequest, ctx) => {
   const guard = requireAdmin(ctx);
   if (guard) return guard;
+
   const body = await req.json().catch(() => null);
-  const parsed = Schema.safeParse(body);
+  const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) return Errors.badRequest("Invalid body", parsed.error.flatten());
-  const initiative = await prisma.initiative.create({ data: parsed.data });
-  return created(initiative);
+
+  const exists = await prisma.program.findUnique({ where: { code: parsed.data.code } });
+  if (exists) return Errors.conflict(`Program code '${parsed.data.code}' already exists`);
+
+  const program = await prisma.program.create({ data: parsed.data });
+  return created(program);
 }, SCOPES.ADMIN_WRITE);

@@ -8,25 +8,25 @@ import { z } from "zod";
 const UpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().optional(),
-  status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
-  capital: z.boolean().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  programId: z.string().cuid().optional().nullable(),
+  isActive: z.boolean().optional(),
 });
 
-export const GET = withAuth(async (_req: NextRequest, ctx, params) => {
-  const project = await prisma.project.findUnique({
+// GET /api/admin/programs/:id
+export const GET = withAuth(async (_req: NextRequest, _ctx, params) => {
+  const program = await prisma.program.findUnique({
     where: { id: params?.id },
     include: {
-      program: { select: { id: true, name: true, code: true } },
-      tasks: { orderBy: { name: "asc" } },
-      _count: { select: { tasks: true } },
+      projects: {
+        include: { _count: { select: { tasks: true } } },
+        orderBy: { name: "asc" },
+      },
     },
   });
-  if (!project) return Errors.notFound("Project not found");
-  return ok(project);
+  if (!program) return Errors.notFound("Program not found");
+  return ok(program);
 }, SCOPES.ADMIN_READ);
 
+// PUT /api/admin/programs/:id
 export const PUT = withAuth(async (req: NextRequest, ctx, params) => {
   const guard = requireAdmin(ctx);
   if (guard) return guard;
@@ -35,9 +35,9 @@ export const PUT = withAuth(async (req: NextRequest, ctx, params) => {
   const parsed = UpdateSchema.safeParse(body);
   if (!parsed.success) return Errors.badRequest("Invalid body", parsed.error.flatten());
 
-  const project = await prisma.project.update({
+  const program = await prisma.program.update({
     where: { id: params?.id },
     data: parsed.data,
   });
-  return ok(project);
+  return ok(program);
 }, SCOPES.ADMIN_WRITE);

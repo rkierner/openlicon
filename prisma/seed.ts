@@ -45,44 +45,112 @@ const COST_CENTERS = [
   { name: "Data & Analytics", code: "DATA" },
 ];
 
-const PROJECTS = [
-  { name: "Platform API", code: "PLAT", color: "#6366f1", capital: false },
-  { name: "Data Pipeline", code: "DATA", color: "#8b5cf6", capital: false },
-  { name: "Customer Portal", code: "CUST", color: "#06b6d4", capital: false },
-  { name: "Mobile App", code: "MOB", color: "#10b981", capital: false },
-  { name: "Internal Tools", code: "INT", color: "#f59e0b", capital: false },
-  { name: "Infrastructure", code: "INFRA", color: "#ef4444", capital: false },
-  { name: "Analytics Dashboard", code: "ANLYT", color: "#ec4899", capital: false },
-  { name: "Authentication Service", code: "AUTH", color: "#14b8a6", capital: false },
-  { name: "Notification System", code: "NOTIF", color: "#f97316", capital: false },
-  { name: "Search & Discovery", code: "SRCH", color: "#84cc16", capital: false },
-  { name: "Payment Integration", code: "PAY", color: "#a855f7", capital: false },
-  { name: "DevOps & CI/CD", code: "DEVOPS", color: "#64748b", capital: false },
+const PROGRAMS = [
+  { name: "Core Platform", code: "CORE" },
+  { name: "Customer Experience", code: "CX" },
+  { name: "Capital Investments", code: "CAP", description: "Capitalizable infrastructure & platform initiatives" },
+  { name: "Internal Operations", code: "OPS" },
 ];
 
-const INITIATIVES_BY_PROJECT: Record<string, string[]> = {
-  PLAT: ["OAuth2 Implementation", "Rate Limiting", "API Gateway", "SDK Development"],
-  DATA: ["ETL Optimization", "Real-time Streaming", "Data Quality", "Schema Evolution"],
-  CUST: ["Portal Redesign", "Self-service Features", "Performance", "Accessibility"],
-  MOB: ["iOS App", "Android App", "Push Notifications", "Offline Mode"],
-  INT: ["Admin Dashboard", "HR Tools", "Finance Reports", "IT Automation"],
-  INFRA: ["Kubernetes Migration", "Cost Optimization", "DR Planning", "Monitoring"],
-  ANLYT: ["Executive Dashboard", "Custom Reports", "Data Export", "Alerting"],
-  AUTH: ["SSO Integration", "MFA", "Session Management", "Audit Logging"],
-  NOTIF: ["Email Templates", "SMS Delivery", "In-app Notifications", "Webhooks"],
-  SRCH: ["Full-text Search", "Faceted Filtering", "Ranking", "Indexing"],
-  PAY: ["Stripe Integration", "Invoicing", "Refunds", "Reconciliation"],
-  DEVOPS: ["Pipeline Automation", "Container Registry", "Secrets Management", "SLO Tracking"],
+// program code → projects
+const PROJECTS_BY_PROGRAM: Record<string, { name: string; code: string; color: string; capital: boolean }[]> = {
+  CORE: [
+    { name: "Platform API", code: "PLAT", color: "#6366f1", capital: false },
+    { name: "Authentication Service", code: "AUTH", color: "#14b8a6", capital: false },
+    { name: "Search & Discovery", code: "SRCH", color: "#84cc16", capital: false },
+    { name: "Notification System", code: "NOTIF", color: "#f97316", capital: false },
+  ],
+  CX: [
+    { name: "Customer Portal", code: "CUST", color: "#06b6d4", capital: false },
+    { name: "Mobile App", code: "MOB", color: "#10b981", capital: false },
+    { name: "Analytics Dashboard", code: "ANLYT", color: "#ec4899", capital: false },
+    { name: "Payment Integration", code: "PAY", color: "#a855f7", capital: false },
+  ],
+  CAP: [
+    { name: "Infrastructure", code: "INFRA", color: "#ef4444", capital: true },
+    { name: "Data Pipeline", code: "DATA", color: "#8b5cf6", capital: true },
+  ],
+  OPS: [
+    { name: "Internal Tools", code: "INT", color: "#f59e0b", capital: false },
+    { name: "DevOps & CI/CD", code: "DEVOPS", color: "#64748b", capital: false },
+  ],
 };
 
-const CATEGORIES = [
-  { name: "Development", code: "DEV", color: "#6366f1" },
-  { name: "Design", code: "DES", color: "#ec4899" },
-  { name: "Meetings", code: "MTG", color: "#f59e0b" },
-  { name: "Admin", code: "ADM", color: "#64748b" },
-  { name: "Research", code: "RES", color: "#10b981" },
-  { name: "Management", code: "MGT", color: "#8b5cf6" },
-];
+// project code → tasks (name, capitalizable)
+const TASKS_BY_PROJECT: Record<string, { name: string; capitalizable?: boolean }[]> = {
+  PLAT: [
+    { name: "Feature Development" },
+    { name: "API Design & Review" },
+    { name: "Bug Fixes" },
+    { name: "Code Review" },
+    { name: "Documentation" },
+  ],
+  AUTH: [
+    { name: "SSO Integration" },
+    { name: "MFA Implementation" },
+    { name: "Session Management" },
+    { name: "Audit Logging" },
+  ],
+  SRCH: [
+    { name: "Full-text Search" },
+    { name: "Faceted Filtering" },
+    { name: "Indexing & Ranking" },
+    { name: "Performance Tuning" },
+  ],
+  NOTIF: [
+    { name: "Email Templates" },
+    { name: "SMS Delivery" },
+    { name: "In-app Notifications" },
+    { name: "Webhooks" },
+  ],
+  CUST: [
+    { name: "Portal Redesign" },
+    { name: "Self-service Features" },
+    { name: "Performance" },
+    { name: "Accessibility" },
+  ],
+  MOB: [
+    { name: "iOS Development" },
+    { name: "Android Development" },
+    { name: "Push Notifications" },
+    { name: "Offline Mode" },
+  ],
+  ANLYT: [
+    { name: "Executive Dashboard" },
+    { name: "Custom Reports" },
+    { name: "Data Export" },
+    { name: "Alerting" },
+  ],
+  PAY: [
+    { name: "Stripe Integration" },
+    { name: "Invoicing" },
+    { name: "Refunds & Reconciliation" },
+  ],
+  INFRA: [
+    { name: "Kubernetes Migration", capitalizable: true },
+    { name: "Cost Optimization", capitalizable: true },
+    { name: "DR Planning", capitalizable: true },
+    { name: "Monitoring & Observability" },
+  ],
+  DATA: [
+    { name: "ETL Development", capitalizable: true },
+    { name: "Real-time Streaming", capitalizable: true },
+    { name: "Data Quality", capitalizable: true },
+    { name: "Schema Evolution" },
+  ],
+  INT: [
+    { name: "Admin Dashboard" },
+    { name: "HR Tools" },
+    { name: "Finance Reports" },
+    { name: "IT Automation" },
+  ],
+  DEVOPS: [
+    { name: "Pipeline Automation" },
+    { name: "Container Registry" },
+    { name: "Secrets Management" },
+    { name: "SLO Tracking" },
+  ],
+};
 
 // ─── Users (Org Hierarchy) ────────────────────────────────────────────────────
 // CEO → 3 VPs → 9 Directors → 18 ICs = 31 users total
@@ -161,48 +229,61 @@ async function main() {
   await prisma.savedReport.deleteMany();
   await prisma.importJob.deleteMany();
   await prisma.syncJob.deleteMany();
-  await prisma.initiative.deleteMany();
+  await prisma.task.deleteMany();
   await prisma.project.deleteMany();
-  await prisma.category.deleteMany();
+  await prisma.program.deleteMany();
   await prisma.user.deleteMany();
   await prisma.costCenter.deleteMany();
   console.log("✓ Cleared existing data");
 
   // ── Cost Centers ──────────────────────────────────────────────────────────
   const costCenters = await Promise.all(
-    COST_CENTERS.map((cc) =>
-      prisma.costCenter.create({ data: cc })
-    )
+    COST_CENTERS.map((cc) => prisma.costCenter.create({ data: cc }))
   );
   const ccMap = Object.fromEntries(costCenters.map((cc) => [cc.code, cc]));
   console.log(`✓ Created ${costCenters.length} cost centers`);
 
-  // ── Categories ────────────────────────────────────────────────────────────
-  const categories = await Promise.all(
-    CATEGORIES.map((cat) => prisma.category.create({ data: cat }))
+  // ── Programs ──────────────────────────────────────────────────────────────
+  const programs = await Promise.all(
+    PROGRAMS.map((pg) => prisma.program.create({ data: pg }))
   );
-  const catMap = Object.fromEntries(categories.map((c) => [c.code, c]));
-  console.log(`✓ Created ${categories.length} categories`);
+  const programMap = Object.fromEntries(programs.map((pg) => [pg.code, pg]));
+  console.log(`✓ Created ${programs.length} programs`);
 
-  // ── Projects ──────────────────────────────────────────────────────────────
-  const projects = await Promise.all(
-    PROJECTS.map((p) => prisma.project.create({ data: p }))
-  );
-  const projectMap = Object.fromEntries(projects.map((p) => [p.code, p]));
-  console.log(`✓ Created ${projects.length} projects`);
+  // ── Projects + Tasks ──────────────────────────────────────────────────────
+  const projects: { id: string; code: string }[] = [];
+  // tasksByProject: projectId → Task[]
+  const tasksByProject: Record<string, { id: string; name: string; capitalizable: boolean }[]> = {};
 
-  // ── Initiatives ───────────────────────────────────────────────────────────
-  const initiativesByProject: Record<string, { id: string; name: string }[]> = {};
-  for (const project of projects) {
-    const names = INITIATIVES_BY_PROJECT[project.code] ?? [];
-    const created = await Promise.all(
-      names.map((name) =>
-        prisma.initiative.create({ data: { name, projectId: project.id, isActive: true } })
-      )
-    );
-    initiativesByProject[project.id] = created;
+  for (const [programCode, projectDefs] of Object.entries(PROJECTS_BY_PROGRAM)) {
+    const program = programMap[programCode];
+    for (const pd of projectDefs) {
+      const project = await prisma.project.create({
+        data: { ...pd, programId: program.id },
+      });
+      projects.push({ id: project.id, code: project.code });
+
+      const taskDefs = TASKS_BY_PROJECT[project.code] ?? [];
+      const tasks = await Promise.all(
+        taskDefs.map((t) =>
+          prisma.task.create({
+            data: {
+              projectId: project.id,
+              name: t.name,
+              capitalizable: t.capitalizable ?? false,
+              isActive: true,
+            },
+          })
+        )
+      );
+      tasksByProject[project.id] = tasks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        capitalizable: t.capitalizable,
+      }));
+    }
   }
-  console.log(`✓ Created initiatives`);
+  console.log(`✓ Created ${projects.length} projects with tasks`);
 
   // ── Users (with hierarchy) ────────────────────────────────────────────────
   const deptToCostCenter: Record<string, string> = {
@@ -361,12 +442,21 @@ async function main() {
     (u) => u.role === Role.USER || u.role === Role.MANAGER
   );
 
-  // Project assignments per user (each user works on 2-3 projects)
-  const userProjectAssignments: Record<string, string[]> = {};
+  // Task assignments per user (each user works on tasks from 2-3 projects)
+  const userTaskAssignments: Record<string, string[]> = {};
   for (const user of timeTrackingUsers) {
     const count = Math.floor(randomBetween(2, 4));
     const shuffled = [...projects].sort(() => Math.random() - 0.5);
-    userProjectAssignments[user.id] = shuffled.slice(0, count).map((p) => p.id);
+    const assignedProjects = shuffled.slice(0, count);
+    // Pick 1-2 tasks per project
+    const taskIds: string[] = [];
+    for (const project of assignedProjects) {
+      const projectTasks = tasksByProject[project.id] ?? [];
+      const taskCount = Math.min(projectTasks.length, Math.floor(randomBetween(1, 3)));
+      const shuffledTasks = [...projectTasks].sort(() => Math.random() - 0.5);
+      taskIds.push(...shuffledTasks.slice(0, taskCount).map((t) => t.id));
+    }
+    userTaskAssignments[user.id] = taskIds.length > 0 ? taskIds : (tasksByProject[projects[0].id]?.slice(0, 1).map((t) => t.id) ?? []);
   }
 
   let totalEntries = 0;
@@ -379,8 +469,6 @@ async function main() {
   );
 
   for (const user of timeTrackingUsers) {
-    const userProjects = userProjectAssignments[user.id];
-
     for (const weekStart of weeks) {
       const isCurrentWeek = weekStart.getTime() === weekMonday.getTime();
       const isPastWeek = weekStart < weekMonday;
@@ -426,35 +514,26 @@ async function main() {
       totalTimesheets++;
 
       // Create entries for Mon–Fri
+      const userTasks = userTaskAssignments[user.id] ?? [];
+      if (userTasks.length === 0) continue;
+
       for (let d = 0; d < 5; d++) {
         const entryDate = addDays(weekStart, d);
 
-        // Pick 1-2 projects per day
-        const dayProjectCount = Math.random() < 0.3 ? 2 : 1;
-        const dayProjects = [...userProjects]
+        // Pick 1-2 tasks per day
+        const dayTaskCount = Math.random() < 0.3 ? 2 : 1;
+        const dayTasks = [...userTasks]
           .sort(() => Math.random() - 0.5)
-          .slice(0, Math.min(dayProjectCount, userProjects.length));
+          .slice(0, Math.min(dayTaskCount, userTasks.length));
 
         let remainingHours = parseFloat(randomBetween(6, 9).toFixed(1));
 
-        for (let pi = 0; pi < dayProjects.length; pi++) {
-          const projectId = dayProjects[pi];
-          const projectInitiatives = initiativesByProject[projectId] ?? [];
-          const initiative = projectInitiatives.length > 0 ? pickRandom(projectInitiatives) : null;
-
-          // Pick category based on user role
-          let cat: { id: string };
-          if (user.role === Role.MANAGER) {
-            cat = pickRandom([catMap.MTG, catMap.MGT, catMap.ADM]);
-          } else {
-            cat = pickRandom([catMap.DEV, catMap.DEV, catMap.DEV, catMap.RES, catMap.MTG]);
-          }
-
-          const isLastProject = pi === dayProjects.length - 1;
-          const hours = isLastProject
+        for (let ti = 0; ti < dayTasks.length; ti++) {
+          const taskId = dayTasks[ti];
+          const isLast = ti === dayTasks.length - 1;
+          const hours = isLast
             ? Math.max(1, parseFloat(remainingHours.toFixed(1)))
             : parseFloat((remainingHours / 2).toFixed(1));
-
           remainingHours -= hours;
 
           await prisma.timeEntry.create({
@@ -462,9 +541,7 @@ async function main() {
               userId: user.id,
               date: entryDate,
               hours,
-              projectId,
-              initiativeId: initiative?.id ?? null,
-              categoryId: cat.id,
+              taskId,
               status: tsStatus,
               source: Math.random() < 0.05 ? EntrySource.AGENT : EntrySource.MANUAL,
               timesheetId: timesheet.id,
@@ -641,7 +718,7 @@ async function main() {
   console.log(`\n📊 Summary:`);
   console.log(`   Users: ${createdUsers.length}`);
   console.log(`   Projects: ${projects.length}`);
-  console.log(`   Categories: ${categories.length}`);
+  console.log(`   Tasks: ${Object.values(tasksByProject).reduce((s, t) => s + t.length, 0)}`);
   console.log(`   Timesheets: ${totalTimesheets}`);
   console.log(`   Time entries: ${totalEntries}`);
   console.log(`\n🔑 Test credentials:`);
