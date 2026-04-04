@@ -20,7 +20,13 @@ export type AuditAction =
   | "IMPORT.START"
   | "IMPORT.COMPLETE"
   | "SYNC.START"
-  | "SYNC.COMPLETE";
+  | "SYNC.COMPLETE"
+  | "JIRA_DC_CONFIG.UPDATE"
+  | "JIRA_DC_CONFIG.DELETE"
+  | "JIRA_DC_MAPPING.CREATE"
+  | "JIRA_DC_MAPPING.DELETE"
+  | "JIRA_DC_USER_CONFIG.UPDATE"
+  | "JIRA_DC_USER_CONFIG.DELETE";
 
 export async function audit(params: {
   userId?: string;

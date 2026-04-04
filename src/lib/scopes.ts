@@ -28,6 +28,10 @@ export const SCOPES = {
 
   // Power BI / BI data export
   DATA_READ: "data:read",
+
+  // Integrations (Jira DC, future: Jira Cloud, etc.)
+  INTEGRATIONS_READ: "integrations:read",
+  INTEGRATIONS_WRITE: "integrations:write",
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -64,6 +68,10 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
     label: "Personal Access Tokens",
     scopes: [SCOPES.PAT_READ, SCOPES.PAT_WRITE],
   },
+  {
+    label: "Integrations",
+    scopes: [SCOPES.INTEGRATIONS_READ, SCOPES.INTEGRATIONS_WRITE],
+  },
 ];
 
 /**
@@ -74,6 +82,9 @@ export function hasScope(tokenScopes: string[], required: Scope): boolean {
   if (tokenScopes.includes(required)) return true;
   // admin:write implies admin:read
   if (required === SCOPES.ADMIN_READ && tokenScopes.includes(SCOPES.ADMIN_WRITE)) return true;
+  // integrations:write implies integrations:read
+  if (required === SCOPES.INTEGRATIONS_READ && tokenScopes.includes(SCOPES.INTEGRATIONS_WRITE))
+    return true;
   // user:write implies user:read
   if (required === SCOPES.USER_READ && tokenScopes.includes(SCOPES.USER_WRITE)) return true;
   // timesheet:approve implies timesheet:read and timesheet:submit

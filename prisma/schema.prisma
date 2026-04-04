@@ -28,6 +28,7 @@ enum EntrySource {
   API
   IMPORT
   AGENT
+  JIRA_DC
 }
 
 enum JobStatus {
@@ -46,6 +47,7 @@ enum ImportType {
 enum SyncType {
   WORKDAY_USERS
   WORKDAY_ORG
+  JIRA_DC_SYNC
 }
 
 enum ApprovalAction {
@@ -101,6 +103,7 @@ model User {
   personalAccessTokens PersonalAccessToken[]
   auditLogs           AuditLog[]
   savedReports        SavedReport[]
+  jiraDcConfig        UserJiraDcConfig?
 
   @@index([managerId])
   @@index([costCenterId])
@@ -155,8 +158,9 @@ model Task {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  project     Project     @relation(fields: [projectId], references: [id])
-  timeEntries TimeEntry[]
+  project        Project                @relation(fields: [projectId], references: [id])
+  timeEntries    TimeEntry[]
+  jiraDcMappings JiraDcProjectMapping[]
 
   @@index([projectId])
   @@map("tasks")
@@ -337,4 +341,74 @@ model SyncJob {
   @@index([type, status])
   @@index([createdAt])
   @@map("sync_jobs")
+}
+
+// ─── Jira Data Center Integration ────────────────────────────────────────────
+
+model JiraDcConnection {
+  id        String   @id @default(cuid())
+  baseUrl   String                         // e.g. https://jira.company.com (no trailing slash)
+  isEnabled Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mappings JiraDcProjectMapping[]
+  syncLogs JiraDcSyncLog[]
+
+  @@map("jira_dc_connections")
+}
+
+model JiraDcProjectMapping {
+  id                 String   @id @default(cuid())
+  jiraDcConnectionId String
+  jiraProjectKey     String   // e.g. "PROJ", "MOBILE"
+  taskId             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  connection JiraDcConnection @relation(fields: [jiraDcConnectionId], references: [id], onDelete: Cascade)
+  task       Task              @relation(fields: [taskId], references: [id])
+
+  @@unique([jiraDcConnectionId, jiraProjectKey])
+  @@index([jiraDcConnectionId])
+  @@index([taskId])
+  @@map("jira_dc_project_mappings")
+}
+
+model UserJiraDcConfig {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  jiraUsername  String                   // Jira DC username for worklog author matching
+  encryptedPat  String                   // AES-256-GCM: "iv:authTag:ciphertext" hex
+  isEnabled     Boolean   @default(true)
+  lastSyncAt    DateTime?
+  lastSyncError String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_jira_dc_configs")
+}
+
+model JiraDcSyncLog {
+  id                 String    @id @default(cuid())
+  jiraDcConnectionId String
+  status             JobStatus @default(PENDING)
+  triggeredBy        String?   // "scheduled" | userId
+  usersProcessed     Int       @default(0)
+  entriesCreated     Int       @default(0)
+  entriesUpdated     Int       @default(0)
+  entriesSkipped     Int       @default(0)
+  errors             Json?     // Array<{ userId, message }>
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  connection JiraDcConnection @relation(fields: [jiraDcConnectionId], references: [id])
+
+  @@index([jiraDcConnectionId, status])
+  @@index([createdAt])
+  @@map("jira_dc_sync_logs")
 }

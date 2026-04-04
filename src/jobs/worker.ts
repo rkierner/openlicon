@@ -7,6 +7,7 @@ import { Worker, Job } from "bullmq";
 import { connection, QUEUES } from "./queue";
 import { runWorkdayUserSync } from "./workday-sync";
 import { importUsers, importProjects, importTimeEntries } from "./replicon-import";
+import { runJiraDcSync } from "./jira-dc-sync";
 import { prisma } from "@/lib/prisma";
 
 console.log("🔧 TIRP Worker starting...");
@@ -119,6 +120,64 @@ const tokenCleanupWorker = new Worker(
   { connection }
 );
 
+// ─── Jira Data Center Sync Worker ────────────────────────────────────────────
+
+const jiraDcSyncWorker = new Worker(
+  QUEUES.JIRA_DC_SYNC,
+  async (job: Job) => {
+    console.log(`[jira-dc-sync] Running job ${job.id}`);
+
+    const connection2 = await prisma.jiraDcConnection.findFirst({
+      where: { isEnabled: true },
+      select: { id: true },
+    });
+
+    if (!connection2) {
+      console.log("[jira-dc-sync] No enabled Jira DC connection, skipping.");
+      return;
+    }
+
+    const syncLog = await prisma.jiraDcSyncLog.create({
+      data: {
+        jiraDcConnectionId: connection2.id,
+        status: "RUNNING",
+        triggeredBy: job.data.triggeredBy ?? "scheduled",
+        startedAt: new Date(),
+      },
+    });
+
+    try {
+      const result = await runJiraDcSync({ triggeredBy: job.data.triggeredBy });
+      await prisma.jiraDcSyncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: "COMPLETED",
+          usersProcessed: result.usersProcessed,
+          entriesCreated: result.entriesCreated,
+          entriesUpdated: result.entriesUpdated,
+          entriesSkipped: result.entriesSkipped,
+          errors: result.errors.length > 0 ? result.errors : undefined,
+          completedAt: new Date(),
+        },
+      });
+      console.log(
+        `[jira-dc-sync] Done: created=${result.entriesCreated} updated=${result.entriesUpdated} skipped=${result.entriesSkipped} errors=${result.errors.length}`
+      );
+    } catch (err) {
+      await prisma.jiraDcSyncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: "FAILED",
+          errors: [{ message: String(err) }],
+          completedAt: new Date(),
+        },
+      });
+      throw err;
+    }
+  },
+  { connection }
+);
+
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 
 async function shutdown() {
@@ -127,6 +186,7 @@ async function shutdown() {
     workdayWorker.close(),
     importWorker.close(),
     tokenCleanupWorker.close(),
+    jiraDcSyncWorker.close(),
   ]);
   await prisma.$disconnect();
   process.exit(0);
@@ -137,7 +197,7 @@ process.on("SIGINT", shutdown);
 
 // ─── Schedule recurring jobs ──────────────────────────────────────────────────
 
-import { workdaySyncQueue, tokenCleanupQueue } from "./queue";
+import { workdaySyncQueue, tokenCleanupQueue, jiraDcSyncQueue } from "./queue";
 
 // Workday sync every night at 2am
 workdaySyncQueue.add("scheduled-sync", {}, {
@@ -151,6 +211,13 @@ tokenCleanupQueue.add("daily-cleanup", {}, {
   repeat: { pattern: "0 3 * * *" },
   removeOnComplete: 5,
   removeOnFail: 5,
+});
+
+// Jira Data Center sync — every hour
+jiraDcSyncQueue.add("hourly-sync", {}, {
+  repeat: { pattern: "0 * * * *" },
+  removeOnComplete: 24,
+  removeOnFail: 10,
 });
 
 console.log("✅ Workers running. Listening for jobs...");
