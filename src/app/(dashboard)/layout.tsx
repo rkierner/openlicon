@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Clock, CheckSquare, BarChart2, Key, Users, Package, Layers } from "lucide-react";
+import { Clock, CheckSquare, BarChart2, Key, Users, Package } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { UserMenu } from "@/components/ui/user-menu";
 
@@ -9,7 +9,6 @@ const NAV_ITEMS = [
   { href: "/timesheet", label: "Timesheet", icon: Clock },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/reports", label: "Reports", icon: BarChart2 },
-  { href: "/admin/programs", label: "Programs", icon: Layers },
   { href: "/admin/projects", label: "Projects", icon: Package },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/settings/tokens", label: "API Tokens", icon: Key },

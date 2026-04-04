@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Archive, ArchiveRestore } from "lucide-react";
+import { Loader2, Archive, ArchiveRestore, Plus } from "lucide-react";
 
 type Program = { id: string; name: string; code: string };
 
@@ -54,6 +54,13 @@ export function ProjectDialog({ open, project, defaultProgramId, onClose, onSave
   const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Inline new-program form
+  const [showNewProgram, setShowNewProgram] = useState(false);
+  const [newProgName, setNewProgName] = useState("");
+  const [newProgCode, setNewProgCode] = useState("");
+  const [creatingProgram, setCreatingProgram] = useState(false);
+  const [programError, setProgramError] = useState<string | null>(null);
+
   useEffect(() => {
     if (open) {
       fetch("/api/admin/programs")
@@ -80,8 +87,38 @@ export function ProjectDialog({ open, project, defaultProgramId, onClose, onSave
         setProgramId(defaultProgramId ?? "");
       }
       setError(null);
+      setShowNewProgram(false);
+      setNewProgName("");
+      setNewProgCode("");
+      setProgramError(null);
     }
   }, [open, project]);
+
+  async function handleCreateProgram() {
+    if (!newProgName.trim() || !newProgCode.trim()) return;
+    setCreatingProgram(true);
+    setProgramError(null);
+    try {
+      const res = await fetch("/api/admin/programs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newProgName.trim(), code: newProgCode.trim().toUpperCase() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProgramError(json?.error?.message ?? "Could not create program");
+        return;
+      }
+      const created = json.data;
+      setPrograms((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setProgramId(created.id);
+      setShowNewProgram(false);
+      setNewProgName("");
+      setNewProgCode("");
+    } finally {
+      setCreatingProgram(false);
+    }
+  }
 
   async function handleSave() {
     if (!name.trim() || !code.trim()) return;
@@ -155,21 +192,79 @@ export function ProjectDialog({ open, project, defaultProgramId, onClose, onSave
         <div className="space-y-4">
           {/* Program */}
           <div className="space-y-1.5">
-            <Label htmlFor="proj-program">
-              Program <span className="text-muted-foreground font-normal">(optional)</span>
-            </Label>
-            <select
-              id="proj-program"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={programId}
-              onChange={(e) => setProgramId(e.target.value)}
-              disabled={!!defaultProgramId && !isEdit}
-            >
-              <option value="">No program</option>
-              {programs.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="proj-program">
+                Program <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              {!showNewProgram && !defaultProgramId && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewProgram(true)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="h-3 w-3" />
+                  New program
+                </button>
+              )}
+            </div>
+
+            {showNewProgram ? (
+              <div className="rounded-md border border-input bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-medium">New program</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={newProgName}
+                    onChange={(e) => setNewProgName(e.target.value)}
+                    placeholder="Program name"
+                    className="h-8 text-sm"
+                    autoFocus
+                  />
+                  <Input
+                    value={newProgCode}
+                    onChange={(e) => setNewProgCode(e.target.value.toUpperCase())}
+                    placeholder="CODE"
+                    maxLength={20}
+                    className="h-8 w-24 text-sm font-mono uppercase"
+                  />
+                </div>
+                {programError && <p className="text-xs text-destructive">{programError}</p>}
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7"
+                    onClick={() => { setShowNewProgram(false); setProgramError(null); }}
+                    disabled={creatingProgram}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7"
+                    onClick={handleCreateProgram}
+                    disabled={!newProgName.trim() || !newProgCode.trim() || creatingProgram}
+                  >
+                    {creatingProgram && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                    Create
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <select
+                id="proj-program"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={programId}
+                onChange={(e) => setProgramId(e.target.value)}
+                disabled={!!defaultProgramId && !isEdit}
+              >
+                <option value="">No program</option>
+                {programs.map((p) => (
+                  <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Name + Code */}
